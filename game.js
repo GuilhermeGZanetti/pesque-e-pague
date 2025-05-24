@@ -8,7 +8,8 @@ let lakeDecorations = []; // Array to store placed decorations {type, x, y}
 
 // Game State Variables
 let money = 0;
-let fishInLake = 0;
+// let fishInLake = 0; // Replaced by fishPopulation
+let fishPopulation = {}; // Example: { tilapia: 20, pacu: 0 }
 let visitors = 0; // Will be initialized in initGame
 // let visitorIncomePerSecond = 1; // Renamed to visitorIncomeBase
 let visitorIncomeBase = 1; // Income per visitor per second
@@ -16,11 +17,20 @@ let fishIncomeMultiplier = 0.1; // Each fish adds this much to income per second
 let maxVisitors = 10; // Maximum number of visitors
 let visitorAttractionRate = 0.01; // Chance per second per fish to attract a new visitor
 
+// Reproduction Variables
+let baseReproductionChance = 0.0005; // Per fish, per second
+let feederReproductionBoost = 0.0005; // Additional chance if feeder is active
+
+// Visual Fish Animation Variables
+let visualFishAnimations = []; // Array to store active visual fish objects
+let visualFishSpawnChance = 0.02; // Base chance per second to try spawning a visual fish if any fish are owned
+let maxVisualFish = 10; // Max number of visual fish on screen at once
+
 // Fish Species Definition
 const fishTypes = [
-    { id: 'tilapia', name: 'Tilápia', cost: 10, value: 1, unlocked: true },
-    { id: 'pacu', name: 'Pacu', cost: 25, value: 3, unlocked: true },
-    { id: 'tambaqui', name: 'Tambaqui', cost: 50, value: 7, unlocked: false, moneyNeeded: 200 }
+    { id: 'tilapia', name: 'Tilápia', cost: 10, value: 1, unlocked: true, batchSize: 20 },
+    { id: 'pacu', name: 'Pacu', cost: 25, value: 3, unlocked: true, batchSize: 15 },
+    { id: 'tambaqui', name: 'Tambaqui', cost: 50, value: 7, unlocked: false, moneyNeeded: 200, batchSize: 10 }
 ];
 
 // Structure Definitions
@@ -31,8 +41,9 @@ let ownedStructures = {}; // Example: { autoFeeder: 1 }
 
 // DOM Element References
 const moneyDisplay = document.getElementById('money-display');
-const fishDisplay = document.getElementById('fish-display');
+// const fishDisplay = document.getElementById('fish-display'); // Removed
 const visitorDisplay = document.getElementById('visitor-display');
+const fishSpeciesCountsDiv = document.getElementById('fish-species-counts');
 
 /**
  * Updates the UI display with the current game state.
@@ -41,8 +52,18 @@ const visitorDisplay = document.getElementById('visitor-display');
 function updateUIDisplay() {
     // Update money display, ensuring it's an integer
     if (moneyDisplay) moneyDisplay.textContent = Math.floor(money);
-    // Update fish count display
-    if (fishDisplay) fishDisplay.textContent = fishInLake;
+    
+    // Update fish count display for individual species
+    // if (fishDisplay) fishDisplay.textContent = getTotalFishCount(); // Removed
+    if (fishSpeciesCountsDiv) {
+        fishSpeciesCountsDiv.innerHTML = '<h4>Fish Population:</h4>'; // Clear previous counts but keep heading
+        fishTypes.forEach(type => {
+            const p = document.createElement('p');
+            p.textContent = `${type.name}: ${fishPopulation[type.id] || 0}`;
+            fishSpeciesCountsDiv.appendChild(p);
+        });
+    }
+
     // Update visitor count display
     if (visitorDisplay) visitorDisplay.textContent = Math.floor(visitors);
 }
@@ -115,13 +136,62 @@ function buyFish(fishTypeId) {
 
     if (money >= selectedFishType.cost) {
         money -= selectedFishType.cost;
-        fishInLake += 1; // Still tracking total fish for now
+        fishPopulation[fishTypeId] += selectedFishType.batchSize; // Use batchSize
         updateUIDisplay();
-        console.log(`${selectedFishType.name} bought!`);
+        console.log(`${selectedFishType.batchSize} ${selectedFishType.name}(s) bought!`);
     } else {
         console.log(`Not enough money to buy ${selectedFishType.name}.`);
         // Optional: alert(`Not enough money to buy ${selectedFishType.name}.`);
     }
+}
+
+/**
+ * Handles fish reproduction logic.
+ */
+function reproduceFish() {
+    let newFishAlerts = [];
+    let anyFishReproduced = false;
+
+    for (const speciesId in fishPopulation) {
+        if (fishPopulation[speciesId] > 0) {
+            let currentChance = baseReproductionChance;
+            if (ownedStructures.autoFeeder && ownedStructures.autoFeeder > 0) {
+                currentChance += feederReproductionBoost;
+            }
+
+            let newBirths = 0;
+            for (let i = 0; i < fishPopulation[speciesId]; i++) {
+                if (Math.random() < currentChance) {
+                    newBirths++;
+                }
+            }
+
+            if (newBirths > 0) {
+                fishPopulation[speciesId] += newBirths;
+                const speciesName = fishTypes.find(f => f.id === speciesId)?.name || speciesId;
+                newFishAlerts.push(`${newBirths} new ${speciesName}(s) born!`);
+                anyFishReproduced = true;
+            }
+        }
+    }
+
+    if (anyFishReproduced) {
+        updateUIDisplay(); // Refresh species counts in the UI
+        populateShop();    // Refresh counts on shop buttons
+        console.log(newFishAlerts.join('\n'));
+    }
+}
+
+/**
+ * Calculates the total number of fish across all species.
+ * @returns {number} The total count of fish.
+ */
+function getTotalFishCount() {
+    let total = 0;
+    for (const speciesId in fishPopulation) {
+        total += fishPopulation[speciesId];
+    }
+    return total;
 }
 
 // --- Lake Customization ---
@@ -149,9 +219,10 @@ function populateShop() {
     fishTypes.forEach(fish => {
         if (fish.unlocked) { // Only show unlocked fish
             const button = document.createElement('button');
-            button.textContent = `Buy ${fish.name} (Cost: ${fish.cost})`;
+            // Update button text to include current count and batch size
+            button.textContent = `Buy ${fish.name} (${fishPopulation[fish.id] || 0}) [${fish.batchSize}] (Cost: ${fish.cost})`;
             button.dataset.fishId = fish.id;
-        button.classList.add('buy-fish-button', 'shop-item-button'); // Added common class
+            button.classList.add('buy-fish-button', 'shop-item-button'); // Added common class
             button.addEventListener('click', () => buyFish(fish.id));
             shopArea.appendChild(button);
         }
@@ -192,12 +263,13 @@ function gameLoop() {
         }
     }
     // New income calculation
-    money += (visitors * visitorIncomeBase) + (fishInLake * fishIncomeMultiplier) + bonusIncomeFromStructures;
+    money += (visitors * visitorIncomeBase) + (getTotalFishCount() * fishIncomeMultiplier) + bonusIncomeFromStructures;
 
     // 2. Attract Visitors
-    if (fishInLake > 0 && visitors < maxVisitors) {
+    let totalFish = getTotalFishCount();
+    if (totalFish > 0 && visitors < maxVisitors) {
         // Each fish gives a chance to attract a visitor
-        let attractionChance = fishInLake * visitorAttractionRate;
+        let attractionChance = totalFish * visitorAttractionRate;
         if (Math.random() < attractionChance) {
             visitors++;
             console.log("A new visitor arrived!");
@@ -210,6 +282,12 @@ function gameLoop() {
 
     // Check for new unlocks
     checkUnlocks(); // This will call populateShop() if needed
+
+    // Handle fish reproduction
+    reproduceFish();
+
+    // Manage visual fish animations
+    manageVisualFish();
 
     // Render the game on canvas
     render();
@@ -232,33 +310,37 @@ function render() {
     ctx.fillStyle = '#4fc3f7'; // Light blue for water
     ctx.fillRect(0, 0, canvas.width, canvas.height); // Fill the entire canvas
 
-    // Draw Fish
-    let fishToDraw = Math.min(fishInLake, 50); // Cap drawn fish at 50
-    ctx.fillStyle = 'orange'; // Change color for variety
+    // Draw Fish (Old system removed, new system will draw from visualFishAnimations)
+    // let fishToDraw = Math.min(getTotalFishCount(), 50); 
+    // ctx.fillStyle = 'orange'; 
 
-    for (let i = 0; i < fishToDraw; i++) {
-        let fishRadius = 5;
-        // Ensure fish is fully within canvas, considering body and tail
-        let fishX = Math.random() * (canvas.width - fishRadius * 3) + fishRadius * 2; 
-        let fishY = Math.random() * (canvas.height - fishRadius * 2) + fishRadius;
-
-        // Body
-        ctx.beginPath();
-        ctx.arc(fishX, fishY, fishRadius, 0, Math.PI * 2);
-        ctx.fill();
-
-        // Tail (simple triangle)
-        ctx.beginPath();
-        ctx.moveTo(fishX - fishRadius, fishY); // Point of tail touching body
-        ctx.lineTo(fishX - fishRadius * 2, fishY - fishRadius); // Upper tail point
-        ctx.lineTo(fishX - fishRadius * 2, fishY + fishRadius); // Lower tail point
-        ctx.closePath();
-        ctx.fill();
-    }
+    // for (let i = 0; i < fishToDraw; i++) {
+    //     let fishRadius = 5;
+    //     let fishX = Math.random() * (canvas.width - fishRadius * 3) + fishRadius * 2; 
+    //     let fishY = Math.random() * (canvas.height - fishRadius * 2) + fishRadius;
+    //     ctx.beginPath();
+    //     ctx.arc(fishX, fishY, fishRadius, 0, Math.PI * 2);
+    //     ctx.fill();
+    //     ctx.beginPath();
+    //     ctx.moveTo(fishX - fishRadius, fishY); 
+    //     ctx.lineTo(fishX - fishRadius * 2, fishY - fishRadius); 
+    //     ctx.lineTo(fishX - fishRadius * 2, fishY + fishRadius); 
+    //     ctx.closePath();
+    //     ctx.fill();
+    // }
 
     // Draw Structures
     // Example: Automatic Feeder
     const feederStructure = structures.find(s => s.id === 'autoFeeder');
+
+    // Draw Animated Fish
+    visualFishAnimations.forEach(vf => {
+        ctx.fillStyle = vf.color;
+        ctx.beginPath();
+        ctx.arc(vf.x, vf.y, vf.size, 0, Math.PI * 2); // Simple circle for now
+        ctx.fill();
+    });
+
     if (ownedStructures.autoFeeder && ownedStructures.autoFeeder > 0 && feederStructure) {
         let feederX = 50;
         let feederY = 50;
@@ -309,8 +391,18 @@ function updateSelectedDecorationDisplay() {
 function initGame() {
     // Set initial values
     money = 100;
-    fishInLake = 0; // Start with no fish, player needs to add them
+    // fishInLake = 0; // Replaced by fishPopulation
+    fishTypes.forEach(type => { // Initialize fishPopulation
+        fishPopulation[type.id] = 0;
+    });
     visitors = 0;   // Start with zero visitors, they will be attracted
+
+    // Add a starting batch of the first fish type
+    const firstFishType = fishTypes[0]; // Assuming Tilapia is the first
+    if (firstFishType) {
+        fishPopulation[firstFishType.id] = firstFishType.batchSize;
+        console.log(`Started with ${firstFishType.batchSize} ${firstFishType.name}.`);
+    }
 
     // Update UI once to show initial state
     updateUIDisplay();
@@ -345,6 +437,51 @@ function initGame() {
 
     console.log("Game initialized.");
 }
+
+/**
+ * Manages the spawning and updating of visual fish animations.
+ */
+function manageVisualFish() {
+    // Spawning New Visual Fish
+    if (getTotalFishCount() > 0 && visualFishAnimations.length < maxVisualFish) {
+        let spawnAttemptChance = visualFishSpawnChance + (getTotalFishCount() / 5000); // Chance increases slightly with more fish
+        if (Math.random() < spawnAttemptChance) {
+            let startY = Math.random() * canvas.height;
+            let startX = (Math.random() < 0.5) ? -20 : canvas.width + 20; // Start off-screen L or R
+            let endX = (startX < 0) ? canvas.width + 20 : -20; // Target opposite side
+            
+            visualFishAnimations.push({
+                x: startX,
+                y: startY,
+                targetX: endX,
+                targetY: startY, // Simple horizontal movement for now
+                speed: 1 + Math.random() * 2, // Speed in pixels per game tick (1 second)
+                size: 5 + Math.random() * 5, // Random size
+                color: 'gold', // Placeholder color
+                age: 0,
+                // Adjusted for 1-second game loop interval. Lifetime of 5 to 10 ticks (seconds).
+                maxAge: 5 + Math.floor(Math.random() * 6) 
+            });
+        }
+    }
+
+    // Updating Existing Visual Fish
+    for (let i = visualFishAnimations.length - 1; i >= 0; i--) {
+        let vf = visualFishAnimations[i];
+        vf.age++;
+
+        // Determine direction for movement
+        let direction = (vf.targetX > vf.x) ? 1 : -1;
+        vf.x += direction * vf.speed;
+
+        // Check for removal conditions
+        let reachedTargetX = (direction > 0 && vf.x >= vf.targetX) || (direction < 0 && vf.x <= vf.targetX);
+        if (vf.age > vf.maxAge || reachedTargetX) {
+            visualFishAnimations.splice(i, 1);
+        }
+    }
+}
+
 
 // Event listener to ensure initGame is called after the DOM is fully loaded
 // Ensure that initGame is called after the DOM is fully loaded and the elements are available.
