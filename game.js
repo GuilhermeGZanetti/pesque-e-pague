@@ -446,21 +446,35 @@ function manageVisualFish() {
     if (getTotalFishCount() > 0 && visualFishAnimations.length < maxVisualFish) {
         let spawnAttemptChance = visualFishSpawnChance + (getTotalFishCount() / 5000); // Chance increases slightly with more fish
         if (Math.random() < spawnAttemptChance) {
-            let startY = Math.random() * canvas.height;
-            let startX = (Math.random() < 0.5) ? -20 : canvas.width + 20; // Start off-screen L or R
-            let endX = (startX < 0) ? canvas.width + 20 : -20; // Target opposite side
             
+            let newSpeed = 80 + Math.random() * 40; // Adjusted speed
+            let newSize = 5 + Math.random() * 5;
+            let newMaxAge = 7 + Math.random() * 3; // Adjusted maxAge in seconds
+            // Adjust y to ensure fish is fully visible vertically
+            let newStartY = Math.random() * (canvas.height - newSize * 2) + newSize; 
+
+            let newStartX, newTargetX;
+            if (Math.random() < 0.5) { // Start Left, Target Right
+                newStartX = -newSize; // Start with its center at -newSize (so it's off-screen)
+                newTargetX = canvas.width + newSize; // Target its center to be just off-screen right
+            } else { // Start Right, Target Left
+                newStartX = canvas.width + newSize;
+                newTargetX = -newSize;
+            }
+            
+            let direction = (newTargetX > newStartX) ? 1 : -1; // 1 for right, -1 for left
+
             visualFishAnimations.push({
-                x: startX,
-                y: startY,
-                targetX: endX,
-                targetY: startY, // Simple horizontal movement for now
-                speed: 1 + Math.random() * 2, // Speed in pixels per game tick (1 second)
-                size: 5 + Math.random() * 5, // Random size
+                x: newStartX,
+                y: newStartY,
+                targetX: newTargetX,
+                targetY: newStartY, // Simple horizontal movement for now
+                speed: newSpeed, 
+                size: newSize, 
                 color: 'gold', // Placeholder color
                 age: 0,
-                // Adjusted for 1-second game loop interval. Lifetime of 5 to 10 ticks (seconds).
-                maxAge: 5 + Math.floor(Math.random() * 6) 
+                maxAge: newMaxAge,
+                direction: direction // Add this
             });
         }
     }
@@ -470,13 +484,14 @@ function manageVisualFish() {
         let vf = visualFishAnimations[i];
         vf.age++;
 
-        // Determine direction for movement
-        let direction = (vf.targetX > vf.x) ? 1 : -1;
-        vf.x += direction * vf.speed;
+        // Apply direction in movement update
+        vf.x += vf.speed * vf.direction;
 
         // Check for removal conditions
-        let reachedTargetX = (direction > 0 && vf.x >= vf.targetX) || (direction < 0 && vf.x <= vf.targetX);
-        if (vf.age > vf.maxAge || reachedTargetX) {
+        // Original targetX check is fine as targetX is already set to be off-screen
+        let reachedTarget = (direction > 0 && vf.x >= vf.targetX) || (direction < 0 && vf.x <= vf.targetX);
+        
+        if (vf.age > vf.maxAge || reachedTarget) {
             visualFishAnimations.splice(i, 1);
         }
     }
