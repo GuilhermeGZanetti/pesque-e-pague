@@ -17,12 +17,55 @@ body {
     transform: translate(-50%, -50%); /* Center the container */
 }
 
+/*
 #lake-area {
     flex-grow: 1;
-    background-color: #4fc3f7; /* Blue for water */
+    background-color: #4fc3f7; // Blue for water
     border: 1px solid #999999;
     padding: 10px;
     margin: 5px;
+}
+*/
+
+#game-canvas {
+    border: 1px solid #333; /* To make its boundary visible */
+    flex-grow: 1; /* To take available space in flex container */
+    margin: 5px;
+    background-color: #f0f0f0; /* Fallback bg */
+}
+
+#customization-controls {
+    width: 200px; /* Same as ui-controls and shop-area */
+    background-color: #f0e68c; /* Khaki, distinct color */
+    padding: 10px;
+    border: 1px solid #999999;
+    margin: 5px;
+    text-align: center; /* Center the content */
+}
+
+#customization-controls h4 {
+    margin-top: 0;
+    margin-bottom: 10px;
+}
+
+#customization-controls button {
+    display: block; /* Make buttons take full width */
+    width: 90%;     /* Slightly less than full for padding */
+    margin: 5px auto; /* Center buttons with some vertical space */
+    padding: 8px;
+    background-color: #d2b48c; /* Tan */
+    border: 1px solid #a0522d; /* Sienna */
+    color: #fff;
+    cursor: pointer;
+}
+
+#customization-controls button:hover {
+    background-color: #bc8f8f; /* RosyBrown */
+}
+
+#customization-controls p {
+    margin-top: 10px;
+    font-weight: bold;
 }
 
 #ui-controls {

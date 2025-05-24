@@ -1,3 +1,11 @@
+// Canvas and Context
+let canvas;
+let ctx;
+
+// Customization Variables
+let selectedDecorationType = null;
+let lakeDecorations = []; // Array to store placed decorations {type, x, y}
+
 // Game State Variables
 let money = 0;
 let fishInLake = 0;
@@ -203,7 +211,96 @@ function gameLoop() {
     // Check for new unlocks
     checkUnlocks(); // This will call populateShop() if needed
 
+    // Render the game on canvas
+    render();
+
     console.log("Game loop running...");
+}
+
+/**
+ * Renders the game on the canvas.
+ */
+function render() {
+    if (!ctx) { // Ensure canvas context is available
+        return;
+    }
+
+    // Clear Canvas
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Draw Lake Background
+    ctx.fillStyle = '#4fc3f7'; // Light blue for water
+    ctx.fillRect(0, 0, canvas.width, canvas.height); // Fill the entire canvas
+
+    // Draw Fish
+    let fishToDraw = Math.min(fishInLake, 50); // Cap drawn fish at 50
+    ctx.fillStyle = 'orange'; // Change color for variety
+
+    for (let i = 0; i < fishToDraw; i++) {
+        let fishRadius = 5;
+        // Ensure fish is fully within canvas, considering body and tail
+        let fishX = Math.random() * (canvas.width - fishRadius * 3) + fishRadius * 2; 
+        let fishY = Math.random() * (canvas.height - fishRadius * 2) + fishRadius;
+
+        // Body
+        ctx.beginPath();
+        ctx.arc(fishX, fishY, fishRadius, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Tail (simple triangle)
+        ctx.beginPath();
+        ctx.moveTo(fishX - fishRadius, fishY); // Point of tail touching body
+        ctx.lineTo(fishX - fishRadius * 2, fishY - fishRadius); // Upper tail point
+        ctx.lineTo(fishX - fishRadius * 2, fishY + fishRadius); // Lower tail point
+        ctx.closePath();
+        ctx.fill();
+    }
+
+    // Draw Structures
+    // Example: Automatic Feeder
+    const feederStructure = structures.find(s => s.id === 'autoFeeder');
+    if (ownedStructures.autoFeeder && ownedStructures.autoFeeder > 0 && feederStructure) {
+        let feederX = 50;
+        let feederY = 50;
+        let feederSize = 30;
+
+        ctx.fillStyle = '#c0c0c0'; // Silver color for the feeder body
+        ctx.fillRect(feederX, feederY, feederSize, feederSize);
+
+        // Add a small "dispenser" part
+        ctx.fillStyle = '#a0a0a0'; // Darker silver
+        ctx.fillRect(feederX + feederSize / 2 - 5, feederY + feederSize, 10, 5); // Small rectangle at the bottom center
+
+        // Keep the text label
+        ctx.fillStyle = 'black'; // Change text color for better contrast on silver
+        ctx.font = '10px Arial';
+        ctx.textAlign = 'center'; // Center the text
+        ctx.fillText('Feeder', feederX + feederSize / 2, feederY + feederSize / 2 + 4); // Adjust text position
+        ctx.textAlign = 'left'; // Reset alignment
+    }
+
+    // Draw Decorations
+    lakeDecorations.forEach(deco => {
+        if (deco.type === 'rock') {
+            ctx.fillStyle = '#808080'; // Darker grey
+            ctx.beginPath();
+            ctx.arc(deco.x, deco.y, 10, 0, Math.PI * 2); // Rock as a grey circle
+            ctx.fill();
+        } else if (deco.type === 'plant') {
+            ctx.fillStyle = '#228B22'; // Forest Green
+            ctx.fillRect(deco.x - 5, deco.y - 10, 10, 20); // Plant as a green rectangle
+        }
+    });
+}
+
+/**
+ * Updates the display for the currently selected decoration.
+ */
+function updateSelectedDecorationDisplay() {
+    const selectedDecorationDisplay = document.getElementById('selected-decoration-display');
+    if (selectedDecorationDisplay) {
+        selectedDecorationDisplay.textContent = selectedDecorationType ? selectedDecorationType : 'None';
+    }
 }
 
 /**
@@ -217,6 +314,31 @@ function initGame() {
 
     // Update UI once to show initial state
     updateUIDisplay();
+
+    // Initialize Canvas
+    canvas = document.getElementById('game-canvas');
+    if (!canvas) {
+        console.error("Canvas element not found!");
+        return;
+    }
+    ctx = canvas.getContext('2d');
+    canvas.width = 600; // Fixed width for now
+    canvas.height = 400; // Fixed height for now
+    console.log(`Canvas initialized with width: ${canvas.width}, height: ${canvas.height}`);
+
+    // Canvas click listener for placing decorations
+    canvas.addEventListener('click', (event) => {
+        if (!selectedDecorationType) return; // Do nothing if no decoration is selected
+
+        const rect = canvas.getBoundingClientRect();
+        const x = event.clientX - rect.left;
+        const y = event.clientY - rect.top;
+
+        lakeDecorations.push({ type: selectedDecorationType, x: x, y: y });
+        // Optional: Deselect after placing
+        // selectedDecorationType = null; 
+        // updateSelectedDecorationDisplay();
+    });
 
     // Start the game loop, calling gameLoop every 1000 milliseconds (1 second)
     setInterval(gameLoop, 1000);
