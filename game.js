@@ -299,8 +299,8 @@ function gameLoop() {
                 visitorIdCounter++;
                 const newVisitor = {
                     id: visitorIdCounter,
-                    x: canvas.width + 10, // Spawn off-screen right
-                    y: Math.random() * canvas.height,
+                    x: canvas.width - 1, // Spawn just on the edge of the canvas
+                    y: Math.min(canvas.height - 1, Math.max(0, Math.random() * canvas.height)), // Ensure Y is within canvas bounds
                     targetX: fishingSpot.x,
                     targetY: fishingSpot.y,
                     state: "arriving",
@@ -308,7 +308,7 @@ function gameLoop() {
                 };
                 activeVisitors.push(newVisitor);
                 visitors = activeVisitors.length; // Update old counter for compatibility if needed elsewhere
-                console.log(`A new visitor (ID: ${newVisitor.id}) is arriving at ${fishingSpot.col},${fishingSpot.row}. Total visitors: ${activeVisitors.length}`);
+                console.log(`Visitor ${newVisitor.id} spawned at Px(${newVisitor.x.toFixed(1)}, ${newVisitor.y.toFixed(1)}), target TILE(${fishingSpot.col},${fishingSpot.row}). Total: ${activeVisitors.length}`);
             }
         }
     }
@@ -731,12 +731,15 @@ function findValidFishingSpot() {
                     }
                 }
                 if (isAdjacentToWater) {
-                    potentialSpots.push({
-                        x: col * tileSize + tileSize / 2, // Center of the tile
-                        y: row * tileSize + tileSize / 2, // Center of the tile
-                        row: row,
-                        col: col
-                    });
+                    // NEW condition: ensure not on map edge
+                    if (row > 0 && row < tileRows - 1 && col > 0 && col < tileCols - 1) {
+                        potentialSpots.push({
+                            x: col * tileSize + tileSize / 2, // Center of the tile
+                            y: row * tileSize + tileSize / 2, // Center of the tile
+                            row: row,
+                            col: col
+                        });
+                    }
                 }
             }
         }
@@ -745,7 +748,43 @@ function findValidFishingSpot() {
     if (potentialSpots.length > 0) {
         return potentialSpots[Math.floor(Math.random() * potentialSpots.length)];
     }
-    console.warn("No valid fishing spot found!");
+    // console.warn can be noisy if it happens often. Consider logging less frequently or having a debug mode.
+    // console.warn("No valid non-edge fishing spot found! Trying edge spots as fallback...");
+
+    // Fallback: If no non-edge spots are found, try again allowing edge spots.
+    // This prevents a complete failure if the only available spots are on the edge.
+    for (let row = 0; row < tileRows; row++) {
+        for (let col = 0; col < tileCols; col++) {
+            if (tilemap[row][col] === TILE_TYPES.LAND) {
+                const neighbors = [
+                    { r: row - 1, c: col }, { r: row + 1, c: col },
+                    { r: row, c: col - 1 }, { r: row, c: col + 1 }
+                ];
+                let isAdjacentToWater = false;
+                for (const n of neighbors) {
+                    if (n.r >= 0 && n.r < tileRows && n.c >= 0 && n.c < tileCols &&
+                        tilemap[n.r][n.c] === TILE_TYPES.WATER) {
+                        isAdjacentToWater = true;
+                        break;
+                    }
+                }
+                if (isAdjacentToWater) {
+                    potentialSpots.push({
+                        x: col * tileSize + tileSize / 2,
+                        y: row * tileSize + tileSize / 2,
+                        row: row,
+                        col: col
+                    });
+                }
+            }
+        }
+    }
+    if (potentialSpots.length > 0) {
+        console.log("Found fishing spot on edge as fallback.");
+        return potentialSpots[Math.floor(Math.random() * potentialSpots.length)];
+    }
+
+    console.warn("No valid fishing spot found, even including edges!");
     return null; // No suitable spot found
 }
 
@@ -775,31 +814,59 @@ function updateVisitors() {
                 visitor.state = "fishing";
                 visitor.timeAtSpot = 0;
                 visitor.departureTime = Math.floor(Math.random() * 31) + 30; // 30-60 seconds
-                console.log(`Visitor ${visitor.id} reached fishing spot. Will stay for ${visitor.departureTime}s. Now fishing.`);
+                console.log(`Visitor ${visitor.id} at Px(${visitor.x.toFixed(1)}, ${visitor.y.toFixed(1)}) TILE(${Math.floor(visitor.x/tileSize)}, ${Math.floor(visitor.y/tileSize)}) reached target. State: fishing. Duration: ${visitor.departureTime}s.`);
             } else {
                 const moveX = (dx / distance) * visitor.speed;
                 const moveY = (dy / distance) * visitor.speed;
                 
-                const nextTileCol = Math.floor((visitor.x + moveX) / tileSize);
-                const nextTileRow = Math.floor((visitor.y + moveY) / tileSize);
+                const potentialX = visitor.x + moveX;
+                const potentialY = visitor.y + moveY;
 
-                if (nextTileRow >= 0 && nextTileRow < tileRows && nextTileCol >= 0 && nextTileCol < tileCols &&
-                    tilemap[nextTileRow][nextTileCol] !== TILE_TYPES.WATER) {
-                    visitor.x += moveX;
-                    visitor.y += moveY;
-                } else {
-                    console.log(`Visitor ${visitor.id} path blocked or near water while arriving, stopping.`);
+                // A. Check if potentialX, potentialY are within canvas bounds
+                if (potentialX < 0 || potentialX >= canvas.width || potentialY < 0 || potentialY >= canvas.height) {
                     const currentTileCol = Math.floor(visitor.x / tileSize);
                     const currentTileRow = Math.floor(visitor.y / tileSize);
-                    if (tilemap[currentTileRow][currentTileCol] === TILE_TYPES.LAND) {
-                         visitor.state = "fishing";
-                         visitor.timeAtSpot = 0;
-                         visitor.departureTime = Math.floor(Math.random() * 31) + 30;
-                         console.log(`Visitor ${visitor.id} stopped at land tile ${currentTileCol},${currentTileRow}. Will stay for ${visitor.departureTime}s. Now fishing.`);
+                    console.warn(`Visitor ${visitor.id} at Px(${visitor.x.toFixed(1)}, ${visitor.y.toFixed(1)}) TILE(${currentTileCol},${currentTileRow}) tried to move off-map to Px(${potentialX.toFixed(1)},${potentialY.toFixed(1)}). Stopping.`);
+                    
+                    if (currentTileRow >= 0 && currentTileRow < tileRows && currentTileCol >= 0 && currentTileCol < tileCols &&
+                        tilemap[currentTileRow][currentTileCol] === TILE_TYPES.LAND) {
+                        visitor.state = "fishing";
+                        visitor.timeAtSpot = 0;
+                        visitor.departureTime = Math.floor(Math.random() * 31) + 30;
+                        console.log(`Visitor ${visitor.id} stopped at Px(${visitor.x.toFixed(1)}, ${visitor.y.toFixed(1)}) TILE(${currentTileCol},${currentTileRow}). Current tile is LAND. State: fishing.`);
                     } else {
-                        console.warn(`Visitor ${visitor.id} is stuck in an invalid tile state: ${currentTileCol},${currentTileRow}. Removing.`);
-                        activeVisitors.splice(i, 1); // Remove stuck visitor
+                        console.error(`Visitor ${visitor.id} stopped at Px(${visitor.x.toFixed(1)}, ${visitor.y.toFixed(1)}) TILE(${currentTileCol},${currentTileRow}). Current tile NOT LAND. Removing.`);
+                        activeVisitors.splice(i, 1);
                         visitors = activeVisitors.length;
+                    }
+                } else {
+                    // B. If potentialX, potentialY are within canvas bounds, then check tile type
+                    const nextTileCol = Math.floor(potentialX / tileSize);
+                    const nextTileRow = Math.floor(potentialY / tileSize);
+
+                    if (nextTileRow >= 0 && nextTileRow < tileRows && nextTileCol >= 0 && nextTileCol < tileCols &&
+                        tilemap[nextTileRow][nextTileCol] !== TILE_TYPES.WATER) {
+                        // Path is clear (not water, and on map)
+                        visitor.x = potentialX;
+                        visitor.y = potentialY;
+                        // Optional: console.log(`Visitor ${visitor.id} moving to Px(${visitor.x.toFixed(1)}, ${visitor.y.toFixed(1)}) TILE(${nextTileCol},${nextTileRow})`);
+                    } else {
+                        // Path is blocked by water or an invalid tile
+                        const currentTileCol = Math.floor(visitor.x / tileSize);
+                        const currentTileRow = Math.floor(visitor.y / tileSize);
+                        console.log(`Visitor ${visitor.id} at Px(${visitor.x.toFixed(1)}, ${visitor.y.toFixed(1)}) TILE(${currentTileCol},${currentTileRow}) - path blocked by WATER/INVALID at TILE(${nextTileCol},${nextTileRow}). Stopping.`);
+                        
+                        if (currentTileRow >= 0 && currentTileRow < tileRows && currentTileCol >= 0 && currentTileCol < tileCols &&
+                            tilemap[currentTileRow][currentTileCol] === TILE_TYPES.LAND) {
+                            visitor.state = "fishing";
+                            visitor.timeAtSpot = 0;
+                            visitor.departureTime = Math.floor(Math.random() * 31) + 30;
+                            console.log(`Visitor ${visitor.id} stopped at Px(${visitor.x.toFixed(1)}, ${visitor.y.toFixed(1)}) TILE(${currentTileCol},${currentTileRow}). Current tile is LAND. State: fishing.`);
+                        } else {
+                            console.warn(`Visitor ${visitor.id} stopped at Px(${visitor.x.toFixed(1)}, ${visitor.y.toFixed(1)}) TILE(${currentTileCol},${currentTileRow}). Current tile NOT LAND. Removing.`);
+                            activeVisitors.splice(i, 1);
+                            visitors = activeVisitors.length;
+                        }
                     }
                 }
             }
@@ -815,7 +882,7 @@ function updateVisitors() {
                 }
                 // Keep current Y for horizontal exit, or randomize if preferred
                 // visitor.targetY = visitor.y; // Or Math.random() * canvas.height for variation
-                console.log(`Visitor ${visitor.id} is done fishing and now leaving towards X=${visitor.targetX}.`);
+                console.log(`Visitor ${visitor.id} at Px(${visitor.x.toFixed(1)}, ${visitor.y.toFixed(1)}) TILE(${Math.floor(visitor.x/tileSize)}, ${Math.floor(visitor.y/tileSize)}) finished fishing. State: leaving. Target Px(X=${visitor.targetX.toFixed(1)}).`);
             }
         } else if (visitor.state === "leaving") {
             const dx = visitor.targetX - visitor.x;
@@ -823,10 +890,11 @@ function updateVisitors() {
             const distance = Math.sqrt(dx * dx + dy * dy);
 
             if (distance < visitor.speed) {
-                console.log(`Visitor ${visitor.id} has left.`);
+                console.log(`Visitor ${visitor.id} at Px(${visitor.x.toFixed(1)}, ${visitor.y.toFixed(1)}) has left the map.`);
                 activeVisitors.splice(i, 1);
                 visitors = activeVisitors.length; // Update old counter
             } else {
+                // Optional: console.log(`Visitor ${visitor.id} leaving. Moving from Px(${visitor.x.toFixed(1)}, ${visitor.y.toFixed(1)}) towards Px(X=${visitor.targetX.toFixed(1)})`);
                 const moveX = (dx / distance) * visitor.speed;
                 const moveY = (dy / distance) * visitor.speed; // Will be 0 if targetY = visitor.y
                 visitor.x += moveX;
