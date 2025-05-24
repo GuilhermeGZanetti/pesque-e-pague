@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pesque e Pague</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="game-container">
+        <canvas id="game-canvas"></canvas>
+        <div id="ui-controls">
+            <p>Money: <span id="money-display">0</span></p>
+            <!-- <p>Fish in Lake: <span id="fish-display">0</span></p> -->
+            <p>Visitors: <span id="visitor-display">0</span></p>
+            <div id="fish-species-counts">
+                <h4>Fish Population:</h4>
+                <!-- Counts will be added here by JavaScript -->
+            </div>
+        </div>
+        <div id="customization-controls">
+            <h4>Decorate Lake:</h4>
+            <button id="select-rock-button">Select Rock</button>
+            <button id="select-plant-button">Select Plant</button>
+            <p>Selected: <span id="selected-decoration-display">None</span></p>
+        </div>
+        <div id="shop-area">
+            <!-- Fish purchase buttons will be dynamically added here by game.js -->
+        </div>
+    </div>
+    <script src="game.js"></script>
+</body>
+</html>
