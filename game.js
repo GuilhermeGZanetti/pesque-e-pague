@@ -28,9 +28,9 @@ let maxVisualFish = 10; // Max number of visual fish on screen at once
 
 // Fish Species Definition
 const fishTypes = [
-    { id: 'tilapia', name: 'Tilápia', cost: 10, value: 1, unlocked: true, batchSize: 20 },
-    { id: 'pacu', name: 'Pacu', cost: 25, value: 3, unlocked: true, batchSize: 15 },
-    { id: 'tambaqui', name: 'Tambaqui', cost: 50, value: 7, unlocked: false, moneyNeeded: 200, batchSize: 10 }
+    { id: 'tilapia', name: 'Tilápia', cost: 10, value: 2, unlocked: true, batchSize: 20, difficulty: 1 },
+    { id: 'pacu', name: 'Pacu', cost: 25, value: 5, unlocked: true, batchSize: 15, difficulty: 1.5 },
+    { id: 'tambaqui', name: 'Tambaqui', cost: 50, value: 10, unlocked: false, moneyNeeded: 200, batchSize: 10, difficulty: 2 }
 ];
 
 // Structure Definitions
@@ -254,16 +254,16 @@ function populateShop() {
  * The main game loop, called every second.
  */
 function gameLoop() {
-    // 1. Calculate Income
-    let bonusIncomeFromStructures = 0;
-    if (ownedStructures.autoFeeder && ownedStructures.autoFeeder > 0) {
-        const feeder = structures.find(s => s.id === 'autoFeeder');
-        if (feeder) {
-            bonusIncomeFromStructures += feeder.incomeBonus;
-        }
-    }
-    // New income calculation
-    money += (visitors * visitorIncomeBase) + (getTotalFishCount() * fishIncomeMultiplier) + bonusIncomeFromStructures;
+    // 1. Calculate Income (Old passive income sources removed)
+    // let bonusIncomeFromStructures = 0; // Removed
+    // if (ownedStructures.autoFeeder && ownedStructures.autoFeeder > 0) { // Removed
+    //     const feeder = structures.find(s => s.id === 'autoFeeder'); // Removed
+    //     if (feeder) { // Removed
+    //         bonusIncomeFromStructures += feeder.incomeBonus; // Removed
+    //     } // Removed
+    // } // Removed
+    // money += (visitors * visitorIncomeBase) + (getTotalFishCount() * fishIncomeMultiplier) + bonusIncomeFromStructures; // Removed
+    // Money will now primarily come from catching fish.
 
     // 2. Attract Visitors
     let totalFish = getTotalFishCount();
@@ -288,6 +288,9 @@ function gameLoop() {
 
     // Manage visual fish animations
     manageVisualFish();
+
+    // Simulate visitor fishing
+    simulateFishing();
 
     // Render the game on canvas
     render();
@@ -436,6 +439,57 @@ function initGame() {
     setInterval(gameLoop, 1000);
 
     console.log("Game initialized.");
+}
+
+/**
+ * Simulates visitors attempting to catch fish.
+ */
+function simulateFishing() {
+    let fishingHappened = false;
+
+    for (let i = 0; i < visitors; i++) {
+        const fishingAttemptChance = 0.1; // 10% chance per visitor per second
+        if (Math.random() < fishingAttemptChance) {
+            if (getTotalFishCount() === 0) continue; // No fish to catch
+
+            let catchableFish = [];
+            let totalCatchWeight = 0;
+
+            fishTypes.forEach(type => {
+                if (fishPopulation[type.id] > 0) {
+                    // Higher population and lower difficulty = higher weight
+                    let weight = fishPopulation[type.id] / type.difficulty; 
+                    catchableFish.push({ id: type.id, name: type.name, value: type.value, weight: weight });
+                    totalCatchWeight += weight;
+                }
+            });
+
+            if (totalCatchWeight === 0) continue;
+
+            let randomCatchValue = Math.random() * totalCatchWeight;
+            let caughtFish = null;
+
+            for (const fish of catchableFish) {
+                if (randomCatchValue < fish.weight) {
+                    caughtFish = fish;
+                    break;
+                }
+                randomCatchValue -= fish.weight;
+            }
+
+            if (caughtFish) {
+                fishPopulation[caughtFish.id]--;
+                money += caughtFish.value;
+                console.log(`A visitor caught a ${caughtFish.name}! +$${caughtFish.value}`);
+                fishingHappened = true;
+            }
+        }
+    }
+
+    if (fishingHappened) {
+        updateUIDisplay();
+        populateShop(); // To update counts on buttons
+    }
 }
 
 /**
