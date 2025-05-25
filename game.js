@@ -304,7 +304,7 @@ function gameLoop() {
                     targetX: fishingSpot.x,
                     targetY: fishingSpot.y,
                     state: "arriving",
-                    speed: 1 + Math.random() // Speed between 1 and 2 pixels per update
+                    speed: 2 + Math.random() * 2 // Speed between 2 and 4 pixels per update
                 };
                 activeVisitors.push(newVisitor);
                 visitors = activeVisitors.length; // Update old counter for compatibility if needed elsewhere
@@ -572,28 +572,58 @@ function manageVisualFish() {
             let newSpeed = 1 + Math.random() * 1; // Pixels per game loop (1 second)
             let newSize = 5 + Math.random() * 5;
             let newMaxAge = 7 + Math.random() * 3; // Max age in seconds
+
+            let lakePixelWidth = lakeMaxX - lakeMinX;
+            let lakePixelHeight = lakeMaxY - lakeMinY;
+            let xMargin = lakePixelWidth * 0.2;
+            let yMargin = lakePixelHeight * 0.2;
+            const minSwimDistance = newSize * 2; // Minimum distance for a fish to swim
+
+            // Adjust margins if lake is too small
+            if (lakePixelWidth - 2 * xMargin < minSwimDistance) {
+                xMargin = 0; 
+            }
+            if (lakePixelHeight - 2 * yMargin < minSwimDistance) {
+                yMargin = 0;
+            }
             
-            // Calculate valid Y range for spawning
-            let minYSpawning = lakeMinY + newSize;
-            let maxYSpawning = lakeMaxY - newSize;
+            // Calculate valid Y range for spawning with margins
+            let minYSpawningWithMargin = (lakeMinY + yMargin) + newSize;
+            let maxYSpawningWithMargin = (lakeMaxY - yMargin) - newSize;
             let newStartY;
 
-            if (minYSpawning >= maxYSpawning) { // Lake is too narrow for this fish size
-                newStartY = lakeMinY + (lakeMaxY - lakeMinY) / 2; // Center it
+            if (minYSpawningWithMargin >= maxYSpawningWithMargin) { 
+                // Fallback: center Y in the original lake area if margin makes it too small
+                newStartY = lakeMinY + (lakeMaxY - lakeMinY) / 2;
+                 if (newStartY < lakeMinY + newSize) newStartY = lakeMinY + newSize; // Clamp if still too small
+                 if (newStartY > lakeMaxY - newSize) newStartY = lakeMaxY - newSize;
             } else {
-                newStartY = Math.random() * (maxYSpawning - minYSpawning) + minYSpawning;
+                newStartY = Math.random() * (maxYSpawningWithMargin - minYSpawningWithMargin) + minYSpawningWithMargin;
             }
+            // Ensure newStartY is within the absolute lake boundaries (in case of rounding or tiny lakes)
+            newStartY = Math.max(lakeMinY + newSize, Math.min(newStartY, lakeMaxY - newSize));
+
 
             let newStartX, newTargetX;
             let direction;
+            
+            // Define effective spawn/target edges with margins
+            let effectiveLakeMinX = lakeMinX + xMargin;
+            let effectiveLakeMaxX = lakeMaxX - xMargin;
+
+            // If margins make the swim area invalid, reset xMargins for this spawn
+            if (effectiveLakeMinX >= effectiveLakeMaxX) {
+                effectiveLakeMinX = lakeMinX;
+                effectiveLakeMaxX = lakeMaxX;
+            }
 
             if (Math.random() < 0.5) { // Start Left, Target Right
-                newStartX = lakeMinX - newSize; // Start with its center just off the visible lake edge
-                newTargetX = lakeMaxX + newSize; // Target a point where its center is just off the other visible lake edge
+                newStartX = effectiveLakeMinX - newSize; 
+                newTargetX = effectiveLakeMaxX + newSize; 
                 direction = 1;
             } else { // Start Right, Target Left
-                newStartX = lakeMaxX + newSize;
-                newTargetX = lakeMinX - newSize;
+                newStartX = effectiveLakeMaxX + newSize;
+                newTargetX = effectiveLakeMinX - newSize;
                 direction = -1;
             }
             
@@ -813,7 +843,7 @@ function updateVisitors() {
                 visitor.y = visitor.targetY;
                 visitor.state = "fishing";
                 visitor.timeAtSpot = 0;
-                visitor.departureTime = Math.floor(Math.random() * 31) + 30; // 30-60 seconds
+                visitor.departureTime = Math.floor(Math.random() * 61) + 60; // 60-120 seconds
                 console.log(`Visitor ${visitor.id} at Px(${visitor.x.toFixed(1)}, ${visitor.y.toFixed(1)}) TILE(${Math.floor(visitor.x/tileSize)}, ${Math.floor(visitor.y/tileSize)}) reached target. State: fishing. Duration: ${visitor.departureTime}s.`);
             } else {
                 const moveX = (dx / distance) * visitor.speed;
@@ -832,7 +862,7 @@ function updateVisitors() {
                         tilemap[currentTileRow][currentTileCol] === TILE_TYPES.LAND) {
                         visitor.state = "fishing";
                         visitor.timeAtSpot = 0;
-                        visitor.departureTime = Math.floor(Math.random() * 31) + 30;
+                        visitor.departureTime = Math.floor(Math.random() * 61) + 60; // 60-120 seconds
                         console.log(`Visitor ${visitor.id} stopped at Px(${visitor.x.toFixed(1)}, ${visitor.y.toFixed(1)}) TILE(${currentTileCol},${currentTileRow}). Current tile is LAND. State: fishing.`);
                     } else {
                         console.error(`Visitor ${visitor.id} stopped at Px(${visitor.x.toFixed(1)}, ${visitor.y.toFixed(1)}) TILE(${currentTileCol},${currentTileRow}). Current tile NOT LAND. Removing.`);
@@ -860,7 +890,7 @@ function updateVisitors() {
                             tilemap[currentTileRow][currentTileCol] === TILE_TYPES.LAND) {
                             visitor.state = "fishing";
                             visitor.timeAtSpot = 0;
-                            visitor.departureTime = Math.floor(Math.random() * 31) + 30;
+                            visitor.departureTime = Math.floor(Math.random() * 61) + 60; // 60-120 seconds
                             console.log(`Visitor ${visitor.id} stopped at Px(${visitor.x.toFixed(1)}, ${visitor.y.toFixed(1)}) TILE(${currentTileCol},${currentTileRow}). Current tile is LAND. State: fishing.`);
                         } else {
                             console.warn(`Visitor ${visitor.id} stopped at Px(${visitor.x.toFixed(1)}, ${visitor.y.toFixed(1)}) TILE(${currentTileCol},${currentTileRow}). Current tile NOT LAND. Removing.`);
