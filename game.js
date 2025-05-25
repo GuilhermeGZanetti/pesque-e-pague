@@ -10,12 +10,14 @@ let lakeDecorations = []; // Array to store placed decorations {type, x, y}
 let money = 0;
 // let fishInLake = 0; // Replaced by fishPopulation
 let fishPopulation = {}; // Example: { tilapia: 20, pacu: 0 }
-let visitors = 0; // Will be initialized in initGame
+let visitors = 0; // Will be initialized in initGame and updated to activeVisitors.length
 // let visitorIncomePerSecond = 1; // Renamed to visitorIncomeBase
 let visitorIncomeBase = 1; // Income per visitor per second
 let fishIncomeMultiplier = 0.1; // Each fish adds this much to income per second
-let maxVisitors = 10; // Maximum number of visitors
+let maxVisitors = 5; // Maximum number of visitors (Changed from 10)
 let visitorAttractionRate = 0.01; // Chance per second per fish to attract a new visitor
+let activeVisitors = []; // Array to store visitor objects
+let visitorIdCounter = 0; // For generating unique visitor IDs
 
 // Reproduction Variables
 let baseReproductionChance = 0.0005; // Per fish, per second
@@ -25,6 +27,28 @@ let feederReproductionBoost = 0.0005; // Additional chance if feeder is active
 let visualFishAnimations = []; // Array to store active visual fish objects
 let visualFishSpawnChance = 0.02; // Base chance per second to try spawning a visual fish if any fish are owned
 let maxVisualFish = 10; // Max number of visual fish on screen at once
+
+// Tilemap Constants
+const TILE_TYPES = {
+    WATER: 0,
+    LAND: 1,
+    TREE: 2
+};
+
+const TILE_COLORS = {
+    [TILE_TYPES.WATER]: '#4fc3f7', // Light blue
+    [TILE_TYPES.LAND]: '#9B7653',  // Brownish
+    [TILE_TYPES.TREE]: '#228B22'   // Forest Green
+};
+
+// Tilemap Variables
+let tileSize = 20; 
+let tileRows; // Will be calculated in initGame
+let tileCols; // Will be calculated in initGame
+let tilemap = []; 
+
+// Lake Boundaries (in pixels)
+let lakeMinX, lakeMinY, lakeMaxX, lakeMaxY;
 
 // Fish Species Definition
 const fishTypes = [
@@ -65,7 +89,7 @@ function updateUIDisplay() {
     }
 
     // Update visitor count display
-    if (visitorDisplay) visitorDisplay.textContent = Math.floor(visitors);
+    if (visitorDisplay) visitorDisplay.textContent = Math.floor(activeVisitors.length); // Use activeVisitors.length
 }
 
 /**
@@ -267,35 +291,50 @@ function gameLoop() {
 
     // 2. Attract Visitors
     let totalFish = getTotalFishCount();
-    if (totalFish > 0 && visitors < maxVisitors) {
-        // Each fish gives a chance to attract a visitor
+    if (totalFish > 0 && activeVisitors.length < maxVisitors) {
         let attractionChance = totalFish * visitorAttractionRate;
         if (Math.random() < attractionChance) {
-            visitors++;
-            console.log("A new visitor arrived!");
-            // updateUIDisplay() below will refresh visitor count
+            const fishingSpot = findValidFishingSpot();
+            if (fishingSpot) {
+                visitorIdCounter++;
+                const newVisitor = {
+                    id: visitorIdCounter,
+                    x: canvas.width - 1, // Spawn just on the edge of the canvas
+                    y: Math.min(canvas.height - 1, Math.max(0, Math.random() * canvas.height)), // Ensure Y is within canvas bounds
+                    targetX: fishingSpot.x,
+                    targetY: fishingSpot.y,
+                    state: "arriving",
+                    speed: 2 + Math.random() * 2 // Speed between 2 and 4 pixels per update
+                };
+                activeVisitors.push(newVisitor);
+                visitors = activeVisitors.length; // Update old counter for compatibility if needed elsewhere
+                console.log(`Visitor ${newVisitor.id} spawned at Px(${newVisitor.x.toFixed(1)}, ${newVisitor.y.toFixed(1)}), target TILE(${fishingSpot.col},${fishingSpot.row}). Total: ${activeVisitors.length}`);
+            }
         }
     }
 
-    // 3. Update UI
+    // 3. Update Visitors
+    updateVisitors();
+
+    // 4. Update UI
     updateUIDisplay(); // Handles Math.floor for money display
 
-    // Check for new unlocks
+    // 5. Check for new unlocks
     checkUnlocks(); // This will call populateShop() if needed
 
-    // Handle fish reproduction
+    // 6. Handle fish reproduction
     reproduceFish();
 
-    // Manage visual fish animations
+    // 7. Manage visual fish animations
     manageVisualFish();
 
-    // Simulate visitor fishing
+    // 8. Simulate visitor fishing (will be enhanced later)
     simulateFishing();
 
-    // Render the game on canvas
+    // 9. Render the game on canvas
     render();
 
-    console.log("Game loop running...");
+    // console.log("Game loop running..."); // Can be noisy
 }
 
 /**
@@ -309,9 +348,15 @@ function render() {
     // Clear Canvas
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Draw Lake Background
-    ctx.fillStyle = '#4fc3f7'; // Light blue for water
-    ctx.fillRect(0, 0, canvas.width, canvas.height); // Fill the entire canvas
+    // Draw Tilemap
+    for (let row = 0; row < tileRows; row++) {
+        for (let col = 0; col < tileCols; col++) {
+            const tileType = tilemap[row][col];
+            const tileColor = TILE_COLORS[tileType];
+            ctx.fillStyle = tileColor;
+            ctx.fillRect(col * tileSize, row * tileSize, tileSize, tileSize);
+        }
+    }
 
     // Draw Fish (Old system removed, new system will draw from visualFishAnimations)
     // let fishToDraw = Math.min(getTotalFishCount(), 50); 
@@ -376,6 +421,23 @@ function render() {
             ctx.fillRect(deco.x - 5, deco.y - 10, 10, 20); // Plant as a green rectangle
         }
     });
+
+    // Draw Visitors
+    activeVisitors.forEach(visitor => {
+        ctx.fillStyle = 'black';
+        ctx.beginPath();
+        ctx.arc(visitor.x, visitor.y, 6, 0, Math.PI * 2); // Visitor as a black circle (radius 6)
+        ctx.fill();
+
+        // Draw catch message
+        if (visitor.catchMessage && visitor.catchMessageTimer > 0) {
+            ctx.fillStyle = 'white'; // Contrasting color
+            ctx.font = '10px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText(visitor.catchMessage, visitor.x, visitor.y - 10); // Position above the visitor
+            ctx.textAlign = 'left'; // Reset alignment
+        }
+    });
 }
 
 /**
@@ -421,6 +483,9 @@ function initGame() {
     canvas.height = 400; // Fixed height for now
     console.log(`Canvas initialized with width: ${canvas.width}, height: ${canvas.height}`);
 
+    // Initialize Tilemap
+    initTilemap();
+
     // Canvas click listener for placing decorations
     canvas.addEventListener('click', (event) => {
         if (!selectedDecorationType) return; // Do nothing if no decoration is selected
@@ -445,48 +510,51 @@ function initGame() {
  * Simulates visitors attempting to catch fish.
  */
 function simulateFishing() {
-    let fishingHappened = false;
+    let anyFishCaughtThisCycle = false;
 
-    for (let i = 0; i < visitors; i++) {
-        const fishingAttemptChance = 0.1; // 10% chance per visitor per second
-        if (Math.random() < fishingAttemptChance) {
-            if (getTotalFishCount() === 0) continue; // No fish to catch
+    activeVisitors.forEach(visitor => {
+        if (visitor.state === "fishing") {
+            const fishingAttemptChance = 0.1; // 10% chance per visitor per second
+            if (Math.random() < fishingAttemptChance) {
+                if (getTotalFishCount() === 0) return; // No fish to catch
 
-            let catchableFish = [];
-            let totalCatchWeight = 0;
+                let catchableFish = [];
+                let totalCatchWeight = 0;
 
-            fishTypes.forEach(type => {
-                if (fishPopulation[type.id] > 0) {
-                    // Higher population and lower difficulty = higher weight
-                    let weight = fishPopulation[type.id] / type.difficulty; 
-                    catchableFish.push({ id: type.id, name: type.name, value: type.value, weight: weight });
-                    totalCatchWeight += weight;
+                fishTypes.forEach(type => {
+                    if (fishPopulation[type.id] > 0) {
+                        let weight = fishPopulation[type.id] / type.difficulty;
+                        catchableFish.push({ id: type.id, name: type.name, value: type.value, weight: weight });
+                        totalCatchWeight += weight;
+                    }
+                });
+
+                if (totalCatchWeight === 0) return;
+
+                let randomCatchValue = Math.random() * totalCatchWeight;
+                let caughtFishType = null;
+
+                for (const fish of catchableFish) {
+                    if (randomCatchValue < fish.weight) {
+                        caughtFishType = fish;
+                        break;
+                    }
+                    randomCatchValue -= fish.weight;
                 }
-            });
 
-            if (totalCatchWeight === 0) continue;
-
-            let randomCatchValue = Math.random() * totalCatchWeight;
-            let caughtFish = null;
-
-            for (const fish of catchableFish) {
-                if (randomCatchValue < fish.weight) {
-                    caughtFish = fish;
-                    break;
+                if (caughtFishType) {
+                    fishPopulation[caughtFishType.id]--;
+                    money += caughtFishType.value;
+                    visitor.catchMessage = "Caught!!";
+                    visitor.catchMessageTimer = 2; // Display for 2 seconds
+                    console.log(`Visitor ${visitor.id} caught a ${caughtFishType.name}! +$${caughtFishType.value}`);
+                    anyFishCaughtThisCycle = true;
                 }
-                randomCatchValue -= fish.weight;
-            }
-
-            if (caughtFish) {
-                fishPopulation[caughtFish.id]--;
-                money += caughtFish.value;
-                console.log(`A visitor caught a ${caughtFish.name}! +$${caughtFish.value}`);
-                fishingHappened = true;
             }
         }
-    }
+    });
 
-    if (fishingHappened) {
+    if (anyFishCaughtThisCycle) {
         updateUIDisplay();
         populateShop(); // To update counts on buttons
     }
@@ -501,23 +569,64 @@ function manageVisualFish() {
         let spawnAttemptChance = visualFishSpawnChance + (getTotalFishCount() / 5000); // Chance increases slightly with more fish
         if (Math.random() < spawnAttemptChance) {
             
-            let newSpeed = 80 + Math.random() * 40; // Adjusted speed
+            let newSpeed = 1 + Math.random() * 1; // Pixels per game loop (1 second)
             let newSize = 5 + Math.random() * 5;
-            let newMaxAge = 7 + Math.random() * 3; // Adjusted maxAge in seconds
-            // Adjust y to ensure fish is fully visible vertically
-            let newStartY = Math.random() * (canvas.height - newSize * 2) + newSize; 
+            let newMaxAge = 7 + Math.random() * 3; // Max age in seconds
 
-            let newStartX, newTargetX;
-            if (Math.random() < 0.5) { // Start Left, Target Right
-                newStartX = -newSize; // Start with its center at -newSize (so it's off-screen)
-                newTargetX = canvas.width + newSize; // Target its center to be just off-screen right
-            } else { // Start Right, Target Left
-                newStartX = canvas.width + newSize;
-                newTargetX = -newSize;
+            let lakePixelWidth = lakeMaxX - lakeMinX;
+            let lakePixelHeight = lakeMaxY - lakeMinY;
+            let xMargin = lakePixelWidth * 0.2;
+            let yMargin = lakePixelHeight * 0.2;
+            const minSwimDistance = newSize * 2; // Minimum distance for a fish to swim
+
+            // Adjust margins if lake is too small
+            if (lakePixelWidth - 2 * xMargin < minSwimDistance) {
+                xMargin = 0; 
+            }
+            if (lakePixelHeight - 2 * yMargin < minSwimDistance) {
+                yMargin = 0;
             }
             
-            let direction = (newTargetX > newStartX) ? 1 : -1; // 1 for right, -1 for left
+            // Calculate valid Y range for spawning with margins
+            let minYSpawningWithMargin = (lakeMinY + yMargin) + newSize;
+            let maxYSpawningWithMargin = (lakeMaxY - yMargin) - newSize;
+            let newStartY;
 
+            if (minYSpawningWithMargin >= maxYSpawningWithMargin) { 
+                // Fallback: center Y in the original lake area if margin makes it too small
+                newStartY = lakeMinY + (lakeMaxY - lakeMinY) / 2;
+                 if (newStartY < lakeMinY + newSize) newStartY = lakeMinY + newSize; // Clamp if still too small
+                 if (newStartY > lakeMaxY - newSize) newStartY = lakeMaxY - newSize;
+            } else {
+                newStartY = Math.random() * (maxYSpawningWithMargin - minYSpawningWithMargin) + minYSpawningWithMargin;
+            }
+            // Ensure newStartY is within the absolute lake boundaries (in case of rounding or tiny lakes)
+            newStartY = Math.max(lakeMinY + newSize, Math.min(newStartY, lakeMaxY - newSize));
+
+
+            let newStartX, newTargetX;
+            let direction;
+            
+            // Define effective spawn/target edges with margins
+            let effectiveLakeMinX = lakeMinX + xMargin;
+            let effectiveLakeMaxX = lakeMaxX - xMargin;
+
+            // If margins make the swim area invalid, reset xMargins for this spawn
+            if (effectiveLakeMinX >= effectiveLakeMaxX) {
+                effectiveLakeMinX = lakeMinX;
+                effectiveLakeMaxX = lakeMaxX;
+            }
+
+            if (Math.random() < 0.5) { // Start Left, Target Right
+                newStartX = effectiveLakeMinX - newSize; 
+                newTargetX = effectiveLakeMaxX + newSize; 
+                direction = 1;
+            } else { // Start Right, Target Left
+                newStartX = effectiveLakeMaxX + newSize;
+                newTargetX = effectiveLakeMinX - newSize;
+                direction = -1;
+            }
+            
             visualFishAnimations.push({
                 x: newStartX,
                 y: newStartY,
@@ -539,13 +648,14 @@ function manageVisualFish() {
         vf.age++;
 
         // Apply direction in movement update
-        vf.x += vf.speed * vf.direction;
+        vf.x += vf.speed * vf.direction; // Speed is pixels per game loop (1 second)
 
         // Check for removal conditions
-        // Original targetX check is fine as targetX is already set to be off-screen
-        let reachedTarget = (direction > 0 && vf.x >= vf.targetX) || (direction < 0 && vf.x <= vf.targetX);
-        
-        if (vf.age > vf.maxAge || reachedTarget) {
+        // Fish is removed if its age exceeds maxAge OR if it has reached/passed its target.
+        // targetX is defined such that the fish is fully outside the visible lake bounds when it reaches targetX.
+        let hasReachedTarget = (vf.direction > 0 && vf.x >= vf.targetX) || (vf.direction < 0 && vf.x <= vf.targetX);
+
+        if (vf.age > vf.maxAge || hasReachedTarget) {
             visualFishAnimations.splice(i, 1);
         }
     }
@@ -572,3 +682,256 @@ document.addEventListener('DOMContentLoaded', () => {
     populateShop(); // Populate the shop with fish options
     initGame(); // Call initGame which now uses the globally defined display elements.
 });
+
+/**
+ * Initializes the tilemap data and calculates lake boundaries.
+ */
+function initTilemap() {
+    tileRows = canvas.height / tileSize;
+    tileCols = canvas.width / tileSize;
+
+    // Define lake boundaries in terms of tiles
+    // Lake should be roughly half the canvas area, centered.
+    // Example: if tileCols = 30, lake starts at col 7 and ends at col 22 (15 cols wide)
+    // if tileRows = 20, lake starts at row 5 and ends at row 14 (9 rows high)
+    const lakeStartCol = Math.floor(tileCols / 4);
+    const lakeEndCol = Math.floor(tileCols * 3 / 4) -1; // -1 because it's an index
+    const lakeStartRow = Math.floor(tileRows / 4);
+    const lakeEndRow = Math.floor(tileRows * 3 / 4) -1; // -1 because it's an index
+    
+    // Calculate pixel boundaries for the lake
+    lakeMinX = lakeStartCol * tileSize;
+    lakeMaxX = (lakeEndCol + 1) * tileSize; // +1 because it's the start of the next tile
+    lakeMinY = lakeStartRow * tileSize;
+    lakeMaxY = (lakeEndRow + 1) * tileSize; // +1 because it's the start of the next tile
+
+
+    for (let row = 0; row < tileRows; row++) {
+        tilemap[row] = [];
+        for (let col = 0; col < tileCols; col++) {
+            // Check if the current tile is within the lake boundaries
+            if (col >= lakeStartCol && col <= lakeEndCol && row >= lakeStartRow && row <= lakeEndRow) {
+                tilemap[row][col] = TILE_TYPES.WATER;
+            } else {
+                tilemap[row][col] = TILE_TYPES.LAND;
+            }
+        }
+    }
+
+    // Add some trees
+    const numberOfTrees = 15;
+    for (let i = 0; i < numberOfTrees; i++) {
+        let treeRow, treeCol;
+        let attempts = 0;
+        do {
+            treeRow = Math.floor(Math.random() * tileRows);
+            treeCol = Math.floor(Math.random() * tileCols);
+            attempts++;
+            if (attempts > 100) break; // Avoid infinite loop if no space
+        } while (tilemap[treeRow][treeCol] !== TILE_TYPES.LAND); // Ensure trees are on land
+
+        if (tilemap[treeRow][treeCol] === TILE_TYPES.LAND) {
+            tilemap[treeRow][treeCol] = TILE_TYPES.TREE;
+        }
+    }
+    console.log("Tilemap initialized with lake and trees.");
+    console.log(`Lake boundaries (pixels): X: ${lakeMinX}-${lakeMaxX}, Y: ${lakeMinY}-${lakeMaxY}`);
+}
+
+/**
+ * Finds a valid fishing spot (a LAND tile adjacent to a WATER tile).
+ * @returns {object|null} An object {x, y, row, col} for the spot, or null if none found.
+ */
+function findValidFishingSpot() {
+    const potentialSpots = [];
+    for (let row = 0; row < tileRows; row++) {
+        for (let col = 0; col < tileCols; col++) {
+            if (tilemap[row][col] === TILE_TYPES.LAND) {
+                // Check adjacent tiles (N, S, E, W)
+                const neighbors = [
+                    { r: row - 1, c: col }, { r: row + 1, c: col },
+                    { r: row, c: col - 1 }, { r: row, c: col + 1 }
+                ];
+                let isAdjacentToWater = false;
+                for (const n of neighbors) {
+                    if (n.r >= 0 && n.r < tileRows && n.c >= 0 && n.c < tileCols &&
+                        tilemap[n.r][n.c] === TILE_TYPES.WATER) {
+                        isAdjacentToWater = true;
+                        break;
+                    }
+                }
+                if (isAdjacentToWater) {
+                    // NEW condition: ensure not on map edge
+                    if (row > 0 && row < tileRows - 1 && col > 0 && col < tileCols - 1) {
+                        potentialSpots.push({
+                            x: col * tileSize + tileSize / 2, // Center of the tile
+                            y: row * tileSize + tileSize / 2, // Center of the tile
+                            row: row,
+                            col: col
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    if (potentialSpots.length > 0) {
+        return potentialSpots[Math.floor(Math.random() * potentialSpots.length)];
+    }
+    // console.warn can be noisy if it happens often. Consider logging less frequently or having a debug mode.
+    // console.warn("No valid non-edge fishing spot found! Trying edge spots as fallback...");
+
+    // Fallback: If no non-edge spots are found, try again allowing edge spots.
+    // This prevents a complete failure if the only available spots are on the edge.
+    for (let row = 0; row < tileRows; row++) {
+        for (let col = 0; col < tileCols; col++) {
+            if (tilemap[row][col] === TILE_TYPES.LAND) {
+                const neighbors = [
+                    { r: row - 1, c: col }, { r: row + 1, c: col },
+                    { r: row, c: col - 1 }, { r: row, c: col + 1 }
+                ];
+                let isAdjacentToWater = false;
+                for (const n of neighbors) {
+                    if (n.r >= 0 && n.r < tileRows && n.c >= 0 && n.c < tileCols &&
+                        tilemap[n.r][n.c] === TILE_TYPES.WATER) {
+                        isAdjacentToWater = true;
+                        break;
+                    }
+                }
+                if (isAdjacentToWater) {
+                    potentialSpots.push({
+                        x: col * tileSize + tileSize / 2,
+                        y: row * tileSize + tileSize / 2,
+                        row: row,
+                        col: col
+                    });
+                }
+            }
+        }
+    }
+    if (potentialSpots.length > 0) {
+        console.log("Found fishing spot on edge as fallback.");
+        return potentialSpots[Math.floor(Math.random() * potentialSpots.length)];
+    }
+
+    console.warn("No valid fishing spot found, even including edges!");
+    return null; // No suitable spot found
+}
+
+/**
+ * Updates visitor positions and states.
+ */
+function updateVisitors() {
+    for (let i = activeVisitors.length - 1; i >= 0; i--) { // Iterate backwards for safe removal
+        const visitor = activeVisitors[i];
+
+        // Manage catch message timer
+        if (visitor.catchMessageTimer && visitor.catchMessageTimer > 0) {
+            visitor.catchMessageTimer -= 1;
+            if (visitor.catchMessageTimer <= 0) {
+                visitor.catchMessage = null;
+            }
+        }
+
+        if (visitor.state === "arriving") {
+            const dx = visitor.targetX - visitor.x;
+            const dy = visitor.targetY - visitor.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+
+            if (distance < visitor.speed) {
+                visitor.x = visitor.targetX;
+                visitor.y = visitor.targetY;
+                visitor.state = "fishing";
+                visitor.timeAtSpot = 0;
+                visitor.departureTime = Math.floor(Math.random() * 61) + 60; // 60-120 seconds
+                console.log(`Visitor ${visitor.id} at Px(${visitor.x.toFixed(1)}, ${visitor.y.toFixed(1)}) TILE(${Math.floor(visitor.x/tileSize)}, ${Math.floor(visitor.y/tileSize)}) reached target. State: fishing. Duration: ${visitor.departureTime}s.`);
+            } else {
+                const moveX = (dx / distance) * visitor.speed;
+                const moveY = (dy / distance) * visitor.speed;
+                
+                const potentialX = visitor.x + moveX;
+                const potentialY = visitor.y + moveY;
+
+                // A. Check if potentialX, potentialY are within canvas bounds
+                if (potentialX < 0 || potentialX >= canvas.width || potentialY < 0 || potentialY >= canvas.height) {
+                    const currentTileCol = Math.floor(visitor.x / tileSize);
+                    const currentTileRow = Math.floor(visitor.y / tileSize);
+                    console.warn(`Visitor ${visitor.id} at Px(${visitor.x.toFixed(1)}, ${visitor.y.toFixed(1)}) TILE(${currentTileCol},${currentTileRow}) tried to move off-map to Px(${potentialX.toFixed(1)},${potentialY.toFixed(1)}). Stopping.`);
+                    
+                    if (currentTileRow >= 0 && currentTileRow < tileRows && currentTileCol >= 0 && currentTileCol < tileCols &&
+                        tilemap[currentTileRow][currentTileCol] === TILE_TYPES.LAND) {
+                        visitor.state = "fishing";
+                        visitor.timeAtSpot = 0;
+                        visitor.departureTime = Math.floor(Math.random() * 61) + 60; // 60-120 seconds
+                        console.log(`Visitor ${visitor.id} stopped at Px(${visitor.x.toFixed(1)}, ${visitor.y.toFixed(1)}) TILE(${currentTileCol},${currentTileRow}). Current tile is LAND. State: fishing.`);
+                    } else {
+                        console.error(`Visitor ${visitor.id} stopped at Px(${visitor.x.toFixed(1)}, ${visitor.y.toFixed(1)}) TILE(${currentTileCol},${currentTileRow}). Current tile NOT LAND. Removing.`);
+                        activeVisitors.splice(i, 1);
+                        visitors = activeVisitors.length;
+                    }
+                } else {
+                    // B. If potentialX, potentialY are within canvas bounds, then check tile type
+                    const nextTileCol = Math.floor(potentialX / tileSize);
+                    const nextTileRow = Math.floor(potentialY / tileSize);
+
+                    if (nextTileRow >= 0 && nextTileRow < tileRows && nextTileCol >= 0 && nextTileCol < tileCols &&
+                        tilemap[nextTileRow][nextTileCol] !== TILE_TYPES.WATER) {
+                        // Path is clear (not water, and on map)
+                        visitor.x = potentialX;
+                        visitor.y = potentialY;
+                        // Optional: console.log(`Visitor ${visitor.id} moving to Px(${visitor.x.toFixed(1)}, ${visitor.y.toFixed(1)}) TILE(${nextTileCol},${nextTileRow})`);
+                    } else {
+                        // Path is blocked by water or an invalid tile
+                        const currentTileCol = Math.floor(visitor.x / tileSize);
+                        const currentTileRow = Math.floor(visitor.y / tileSize);
+                        console.log(`Visitor ${visitor.id} at Px(${visitor.x.toFixed(1)}, ${visitor.y.toFixed(1)}) TILE(${currentTileCol},${currentTileRow}) - path blocked by WATER/INVALID at TILE(${nextTileCol},${nextTileRow}). Stopping.`);
+                        
+                        if (currentTileRow >= 0 && currentTileRow < tileRows && currentTileCol >= 0 && currentTileCol < tileCols &&
+                            tilemap[currentTileRow][currentTileCol] === TILE_TYPES.LAND) {
+                            visitor.state = "fishing";
+                            visitor.timeAtSpot = 0;
+                            visitor.departureTime = Math.floor(Math.random() * 61) + 60; // 60-120 seconds
+                            console.log(`Visitor ${visitor.id} stopped at Px(${visitor.x.toFixed(1)}, ${visitor.y.toFixed(1)}) TILE(${currentTileCol},${currentTileRow}). Current tile is LAND. State: fishing.`);
+                        } else {
+                            console.warn(`Visitor ${visitor.id} stopped at Px(${visitor.x.toFixed(1)}, ${visitor.y.toFixed(1)}) TILE(${currentTileCol},${currentTileRow}). Current tile NOT LAND. Removing.`);
+                            activeVisitors.splice(i, 1);
+                            visitors = activeVisitors.length;
+                        }
+                    }
+                }
+            }
+        } else if (visitor.state === "fishing") {
+            visitor.timeAtSpot += 1; // Game loop is 1 second
+            if (visitor.timeAtSpot > visitor.departureTime) {
+                visitor.state = "leaving";
+                // Determine closest horizontal exit
+                if (visitor.x < canvas.width / 2) {
+                    visitor.targetX = -10; // Exit left
+                } else {
+                    visitor.targetX = canvas.width + 10; // Exit right
+                }
+                // Keep current Y for horizontal exit, or randomize if preferred
+                // visitor.targetY = visitor.y; // Or Math.random() * canvas.height for variation
+                console.log(`Visitor ${visitor.id} at Px(${visitor.x.toFixed(1)}, ${visitor.y.toFixed(1)}) TILE(${Math.floor(visitor.x/tileSize)}, ${Math.floor(visitor.y/tileSize)}) finished fishing. State: leaving. Target Px(X=${visitor.targetX.toFixed(1)}).`);
+            }
+        } else if (visitor.state === "leaving") {
+            const dx = visitor.targetX - visitor.x;
+            const dy = visitor.targetY - visitor.y; // Y movement is minimal if targetY is same as visitor.y
+            const distance = Math.sqrt(dx * dx + dy * dy);
+
+            if (distance < visitor.speed) {
+                console.log(`Visitor ${visitor.id} at Px(${visitor.x.toFixed(1)}, ${visitor.y.toFixed(1)}) has left the map.`);
+                activeVisitors.splice(i, 1);
+                visitors = activeVisitors.length; // Update old counter
+            } else {
+                // Optional: console.log(`Visitor ${visitor.id} leaving. Moving from Px(${visitor.x.toFixed(1)}, ${visitor.y.toFixed(1)}) towards Px(X=${visitor.targetX.toFixed(1)})`);
+                const moveX = (dx / distance) * visitor.speed;
+                const moveY = (dy / distance) * visitor.speed; // Will be 0 if targetY = visitor.y
+                visitor.x += moveX;
+                visitor.y += moveY;
+            }
+        }
+    }
+    // Ensure global 'visitors' variable is consistent if it's still used elsewhere directly
+    visitors = activeVisitors.length; 
+}
